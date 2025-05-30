@@ -32,4 +32,4 @@ This project implements a dynamic pairs trading strategy using **Kalman Filters*
 Quantitative Research · Kalman Filtering · Portfolio Optimization · Time Series Analysis · Backtesting
 
 ## 🔗 Connect
-[LinkedIn]([https://www.linkedin.com/in/your-profile](http://www.linkedin.com/in/tin-tak-chong)) • [Email](mailto:chongtt062@gmail.com)
+[LinkedIn](https://www.linkedin.com/in/your-profile](http://www.linkedin.com/in/tin-tak-chong) • [Email](mailto:chongtt062@gmail.com)
