@@ -24,7 +24,8 @@ This project implements a dynamic pairs trading strategy using **Kalman Filters*
 - Outperformed SPY and static OLS strategies in both returns and risk-adjusted metrics
 
 ## 📂 Files
-- `notebooks/`: Backtesting and signal generation scripts
+- `code/`: Backtesting and signal generation scripts
+- `graphs/`: All the graphs generated
 - `slides.pdf`: Presentation slides
 
 ## 🧰 Skills Demonstrated
