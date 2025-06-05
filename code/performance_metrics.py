@@ -2,7 +2,55 @@ import numpy as np
 import pandas as pd
 
 def calculate_metrics(portfolio_df, initial_capital, risk_free_rate=0.0):
-    """ Calculates standard performance metrics for a backtest result. """
+    """
+    Calculates standard performance metrics for a backtested trading strategy.
+
+    The function takes a portfolio DataFrame, initial capital, and risk-free rate
+    to compute metrics such as Total Return, Compound Annual Growth Rate (CAGR),
+    Annualized Volatility, Sharpe Ratio, Maximum Drawdown, Calmar Ratio, and
+    the Number of Trades.
+
+    Parameters
+    ----------
+    portfolio_df : pd.DataFrame
+        A pandas DataFrame representing the portfolio's performance over time.
+        It must contain:
+        -   A 'total' column: Time series of the total portfolio value.
+        -   A DatetimeIndex.
+        It should ideally also contain:
+        -   A 'returns' column: Daily percentage returns of the portfolio. If not
+            present, it will be calculated from the 'total' column.
+        -   A 'trades' column: Indicator (e.g., 1.0) on days when a trade occurred.
+            Used to count the total number of trades. If absent, number of trades
+            will be 0.
+    initial_capital : float
+        The starting capital of the backtest.
+    risk_free_rate : float, optional
+        The annualized risk-free rate used for calculating the Sharpe Ratio.
+        Defaults to 0.0.
+
+    Returns
+    -------
+    dict[str, float | int]
+        A dictionary where keys are metric names (strings) and values are the
+        calculated metric values (float or int). The metrics included are:
+        -   "Total Return": The total percentage return over the entire period.
+        -   "CAGR": Compound Annual Growth Rate.
+        -   "Annualized Volatility": Standard deviation of daily returns, annualized (sqrt(252)).
+        -   "Sharpe Ratio": (CAGR - risk_free_rate) / Annualized Volatility.
+        -   "Max Drawdown": The largest peak-to-trough decline during a specific period.
+        -   "Calmar Ratio": CAGR / abs(Max Drawdown).
+        -   "Number of Trades": Total count of trades executed.
+
+    Notes
+    -----
+    - Assumes 252 trading days in a year for annualization.
+    - CAGR calculation uses the actual number of days and converts to years.
+    - Handles edge cases such as empty DataFrames, very short periods, zero volatility,
+      or zero drawdown to prevent division by zero and return sensible values (e.g., 0.0 or np.inf).
+    - If `initial_capital` or `final_value` is non-positive, CAGR and Total Return
+      are set to 0.0.
+    """
     # Ensure 'returns' column exists
     if 'returns' not in portfolio_df.columns:
         portfolio = portfolio_df.copy()

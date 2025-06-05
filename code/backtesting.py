@@ -5,7 +5,93 @@ from .performance_metrics import calculate_metrics # Use . for relative import
 def backtest_strategy(signals, initial_capital, fixed_cost_per_trade,
                       variable_cost_pct, slippage_pct,
                       stop_loss_z_threshold=None, risk_free_rate=0.0): # Added risk_free_rate
-    """ Backtests a pairs trading strategy based on generated signals. """
+    """
+    Backtests a pairs trading strategy based on generated signals, incorporating
+    transaction costs, slippage, and an optional stop-loss mechanism.
+
+    The strategy involves taking positions in two assets (Y and X) based on
+    the deviation of their spread from its mean (z-score).
+
+    Parameters
+    ----------
+    signals : pd.DataFrame
+        DataFrame containing trading signals and market data. Expected columns:
+        - 'positions': Target position for the pair (1 for long spread, -1 for short spread, 0 for flat).
+        - 'price_y': Price of asset Y.
+        - 'price_x': Price of asset X.
+        - 'beta': Hedge ratio (dynamically or statically estimated).
+        - 'z_score': The z-score of the spread, used for entry/exit and stop-loss.
+        The DataFrame should be indexed by date.
+    initial_capital : float
+        The starting capital for the backtest.
+    fixed_cost_per_trade : float
+        Fixed transaction cost applied to each leg of a trade (e.g., $1 per trade per asset).
+    variable_cost_pct : float
+        Variable transaction cost as a percentage of the trade value for each leg
+        (e.g., 0.001 for 0.1%).
+    slippage_pct : float
+        Slippage cost as a percentage of the execution price, applied to each leg.
+        Positive slippage makes buy prices higher and sell prices lower.
+    stop_loss_z_threshold : float, optional
+        If provided, a stop-loss is triggered if the z-score moves adversely
+        by this amount from the z-score at entry. For example, if entry Z was -2.0
+        and `stop_loss_z_threshold` is 1.0, a stop is triggered if Z rises above -1.0.
+        If None (default), no stop-loss is applied.
+    risk_free_rate : float, optional
+        Annualized risk-free rate used for calculating performance metrics like
+        the Sharpe ratio. Defaults to 0.0.
+
+    Returns
+    -------
+    portfolio : pd.DataFrame
+        DataFrame tracking the portfolio's evolution over time. Columns include:
+        - 'holdings': Value of current asset holdings.
+        - 'cash': Cash balance.
+        - 'total': Total portfolio value (holdings + cash).
+        - 'positions': Actual position held in the pair (1, -1, or 0).
+        - 'trades': Indicator (1.0) if a trade occurred on that day, else 0.0.
+        - 'returns': Daily percentage returns of the total portfolio value.
+    metrics : pd.Series
+        A Series containing various performance metrics calculated from the
+        backtest (e.g., CAGR, Sharpe Ratio, Max Drawdown).
+
+    Methodology
+    -----------
+    1.  Initialization: Sets up the portfolio DataFrame with initial capital.
+    2.  Iteration: Loops through each day in the `signals` DataFrame.
+        a.  Carry Forward: Portfolio values (cash, holdings, total) are carried
+            forward from the previous day.
+        b.  Stop-Loss Check: If a stop-loss threshold is set and a position is open,
+            it checks if the current z-score has moved adversely beyond the
+            `stop_loss_z_threshold` from the z-score at the time of entry.
+            If triggered, the target position for the day is set to 0 (flat).
+        c.  Trade Execution: If the target position (from signals or stop-loss)
+            differs from the previous day's position, a trade is executed:
+            i.  Close Existing Position: If currently holding a position, it's
+                closed. Cash is updated by the proceeds, and transaction costs
+                (fixed + variable + slippage) for both legs are deducted.
+            ii. Open New Position: If the target position is not flat, a new
+                position is opened.
+                - Capital Allocation: Half of the previous day's total portfolio
+                  value is targeted for the Y-leg of the pair.
+                - Shares Calculation: Shares for asset Y are calculated based on
+                  its execution price (including slippage). Shares for asset X
+                  are calculated to hedge asset Y using the provided `beta`
+                  (shares_x = -beta * shares_y).
+                - Cash Update: Cash is reduced by the net cost of opening the
+                  position.
+                - Transaction Costs: Costs (fixed + variable + slippage) for
+                  both legs are deducted from cash.
+                - Entry Z-score: The z-score at entry is recorded if not a
+                  stop-loss induced trade.
+        d.  Mark-to-Market: The 'holdings' value is updated using the current day's
+            market prices for Y and X (without slippage). The 'total' portfolio
+            value is updated.
+        e.  Bankruptcy Check: If total portfolio value drops to or below zero,
+            the backtest is terminated.
+    3.  Final Metrics: After the loop, daily returns are calculated, and overall
+        performance metrics are computed using `calculate_metrics`.
+    """
     print(f"Backtesting: {signals.index.min().date()} to {signals.index.max().date()}...")
     if signals.empty or 'positions' not in signals.columns:
         print("Warning: Invalid signals DataFrame for backtesting.")

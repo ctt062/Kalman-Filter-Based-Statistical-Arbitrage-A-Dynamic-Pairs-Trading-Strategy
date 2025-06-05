@@ -5,8 +5,38 @@ from statsmodels.tsa.stattools import coint, adfuller
 
 def calculate_half_life(spread_series):
     """
-    Calculates the Half-Life of mean reversion for a spread series using
-    the Ornstein-Uhlenbeck formula derived from an AR(1) process.
+    Calculates the Half-Life of mean reversion for a given spread series.
+
+    The half-life is estimated using the Ornstein-Uhlenbeck formula, derived
+    from fitting an AR(1) process to the spread:
+        dS_t = lambda * S_{t-1} * dt + dW_t
+    where dS_t is the change in spread, S_{t-1} is the lagged spread, and
+    lambda is the speed of mean reversion. The half-life is then
+    calculated as -ln(2) / lambda.
+
+    Parameters
+    ----------
+    spread_series : pd.Series
+        A pandas Series representing the spread (e.g., residuals from a
+        cointegrating regression) over time. Index should be a DatetimeIndex.
+
+    Returns
+    -------
+    float
+        The calculated half-life in the same time units as the frequency of
+        the `spread_series` (e.g., days if daily data). Returns `np.inf` if:
+        - The series has insufficient data (less than 10 points after processing).
+        - The series contains NaNs.
+        - The estimated lambda coefficient is non-negative (indicating no
+          mean reversion or a random walk).
+        - An error occurs during calculation.
+
+    Notes
+    -----
+    The regression performed is:
+        spread_diff = intercept + lambda_coeff * spread_lagged
+    The `lambda_coeff` from this regression is used for the half-life calculation.
+    A constant is included in the regression, but only `lambda_coeff` is used.
     """
     if spread_series.isnull().any() or len(spread_series) < 10:
         return np.inf # Not enough data or contains NaNs
@@ -48,8 +78,64 @@ def find_cointegrated_pair(data, significance_level=0.05,
                            min_half_life=5, max_half_life=100,
                            enable_half_life_filter=False):
     """
-    Finds the best cointegrated pair using Engle-Granger & ADF tests,
-    calculates Half-Life, and optionally filters by Half-Life.
+    Identifies the best cointegrated pair from a DataFrame of time series data.
+
+    The process involves:
+    1.  Iterating through all unique pairs of time series in the `data`.
+    2.  For each pair, performing the Engle-Granger (EG) two-step cointegration test:
+        a.  Run an OLS regression of one series on the other (plus a constant).
+        b.  Test the residuals (the "spread") for stationarity using the
+            Augmented Dickey-Fuller (ADF) test.
+    3.  If both EG and ADF tests indicate cointegration at the specified
+        `significance_level`, the half-life of mean reversion for the OLS
+        spread is calculated.
+    4.  Optionally, if `enable_half_life_filter` is True, pairs are further
+        filtered to include only those whose spread half-life falls within
+        the [`min_half_life`, `max_half_life`] range.
+    5.  Among all pairs satisfying the criteria, the one with the lowest
+        Engle-Granger test p-value is selected as the "best" pair.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        A pandas DataFrame where each column is a time series (e.g., asset prices)
+        and the index is a DatetimeIndex.
+    significance_level : float, optional
+        The p-value threshold for both the Engle-Granger and ADF tests.
+        Defaults to 0.05. For the EG test, the t-statistic must also be
+        more negative than the 5% critical value.
+    min_half_life : float, optional
+        The minimum acceptable half-life (in periods, e.g., days) for the
+        spread if `enable_half_life_filter` is True. Defaults to 5.
+    max_half_life : float, optional
+        The maximum acceptable half-life (in periods, e.g., days) for the
+        spread if `enable_half_life_filter` is True. Defaults to 100.
+    enable_half_life_filter : bool, optional
+        If True, pairs are filtered based on their spread's half-life.
+        Defaults to False.
+
+    Returns
+    -------
+    tuple[str | None, str | None, dict | None]
+        -   ticker1 (str or None): Name of the first asset in the best pair (dependent variable in OLS).
+        -   ticker2 (str or None): Name of the second asset in the best pair (independent variable in OLS).
+        -   pair_info (dict or None): A dictionary containing detailed statistics for the
+            best pair, including:
+            'ticker1', 'ticker2', 'coint_p_value', 'coint_t_stat',
+            'coint_crit_values', 'ols_beta', 'ols_alpha', 'adf_p_value',
+            'adf_stat', 'half_life_days'.
+        Returns (None, None, None) if no suitable pair is found or if input
+        data is insufficient.
+
+    Notes
+    -----
+    - Requires at least two time series in `data`.
+    - Requires at least 50 overlapping data points for each pair after NaN removal.
+    - The Engle-Granger test uses `trend='c'` (constant term in regression).
+    - The OLS regression for the spread uses `series1` as dependent (Y) and
+      `series2` as independent (X).
+    - A warning is printed reminding the user to consider the economic rationale
+      for any selected pair.
     """
     n = data.shape[1]
     if n < 2:

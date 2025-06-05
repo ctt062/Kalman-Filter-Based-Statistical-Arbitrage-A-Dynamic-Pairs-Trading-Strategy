@@ -7,7 +7,83 @@ def generate_signals(y, x, beta, alpha, z_score_window,
                      dynamic_z_window_factor=1.5,
                      min_z_std_dev = 0.1,
                      strategy_name="KF"):
-    """ Generates trading signals based on rolling z-score of the spread. """
+    """
+    Generates trading signals for a pairs trading strategy based on the
+    rolling Z-score of the spread.
+
+    The process involves:
+    1.  Calculating the spread: `spread = y - (beta * x + alpha)`.
+        `beta` and `alpha` can be static (float) or dynamic (pd.Series).
+    2.  Calculating the rolling Z-score of the spread:
+        `z_score = (spread - rolling_mean(spread)) / rolling_std(spread)`.
+    3.  Determining entry/exit thresholds:
+        -   Fixed: `entry_threshold_z` and `exit_threshold_z` are used directly.
+        -   Dynamic: Thresholds are calculated as `multiplier * rolling_std(z_score)`.
+            The `rolling_std(z_score)` is itself calculated over a window derived
+            from `z_score_window * dynamic_z_window_factor`, and clipped at
+            `min_z_std_dev`.
+    4.  Generating positions (1 for long spread, -1 for short spread, 0 for flat)
+        based on whether the Z-score crosses these thresholds.
+
+    Parameters
+    ----------
+    y : pd.Series
+        Time series of the dependent asset's prices (e.g., asset Y).
+    x : pd.Series
+        Time series of the independent asset's prices (e.g., asset X).
+    beta : float or pd.Series
+        The hedge ratio. Can be a single float (static) or a time series (dynamic).
+    alpha : float or pd.Series
+        The intercept. Can be a single float (static) or a time series (dynamic).
+    z_score_window : int
+        The rolling window size (number of periods) for calculating the mean
+        and standard deviation of the spread to compute its Z-score.
+    entry_threshold_z : float
+        The Z-score value (or multiplier for dynamic thresholds) beyond which
+        a position is initiated. E.g., if Z < -entry_threshold, go long spread.
+    exit_threshold_z : float
+        The Z-score value (or multiplier for dynamic thresholds) towards which
+        the Z-score must revert for an existing position to be closed.
+        E.g., if long spread and Z >= -exit_threshold, exit.
+    use_dynamic_thresholds : bool, optional
+        If True, entry/exit thresholds are dynamic based on the rolling standard
+        deviation of the Z-score itself. Defaults to False (fixed thresholds).
+    dynamic_z_window_factor : float, optional
+        Factor to multiply `z_score_window` by to get the window for calculating
+        the rolling standard deviation of the Z-score (used for dynamic thresholds).
+        Defaults to 1.5.
+    min_z_std_dev : float, optional
+        Minimum standard deviation for the Z-score when calculating dynamic thresholds,
+        to prevent overly sensitive thresholds during flat Z-score periods. Defaults to 0.1.
+    strategy_name : str, optional
+        A name for the strategy, used in print statements for clarity. Defaults to "KF".
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame indexed by date, containing:
+        -   'price_y', 'price_x': Original (aligned) prices.
+        -   'beta', 'alpha': The beta and alpha used (aligned).
+        -   'spread': The calculated spread time series.
+        -   'z_score': The Z-score of the spread.
+        -   'entry_z_upper', 'entry_z_lower', 'exit_z_upper', 'exit_z_lower':
+            The threshold values used for trading decisions.
+        -   'positions': The target position for each day (1, -1, or 0).
+        -   'signal': The change in position from the previous day (trade signal).
+        Returns an empty DataFrame if critical errors occur or if insufficient
+        data is available.
+
+    Notes
+    -----
+    -   Handles alignment of y, x, beta, and alpha if beta/alpha are dynamic.
+    -   Ensures minimum periods for rolling calculations to avoid NaNs from insufficient data.
+    -   Handles zero standard deviation in Z-score calculation robustly.
+    -   The trading logic is:
+        -   From Flat: Enter long spread if Z < lower_entry_threshold.
+                      Enter short spread if Z > upper_entry_threshold.
+        -   From Long Spread: Exit to flat if Z >= lower_exit_threshold.
+        -   From Short Spread: Exit to flat if Z <= upper_exit_threshold.
+    """
     print(f"Generating signals ({strategy_name}, DynThr: {use_dynamic_thresholds}): {y.index.min().date()} to {y.index.max().date()}...")
     if y.empty or x.empty: return pd.DataFrame()
 

@@ -39,6 +39,45 @@ from code.sensitivity_analysis import run_sensitivity_analysis
 
 
 def main():
+    """
+    Main function to execute the Kalman Filter pairs trading strategy pipeline.
+
+    This function orchestrates the entire process, including:
+    1.  Setting up global configurations (warnings, plotting style) and output directories.
+    2.  Loading and printing a summary of key strategy parameters from `config.py`.
+    3.  Fetching and preparing historical price data for specified tickers and benchmark.
+        This includes handling NaNs and splitting data into in-sample (IS) and
+        out-of-sample (OOS) periods.
+    4.  Selecting a cointegrated pair of assets from the IS data using statistical tests
+        and optional half-life filtering. Diagnostic plots for pair selection are generated.
+    5.  Estimating model parameters:
+        - Static Ordinary Least Squares (OLS) regression on IS data.
+        - Kalman Filter initialization and application to derive dynamic hedge ratios
+          (beta) and intercepts (alpha) for both IS and OOS periods.
+    6.  Generating trading signals based on the calculated spread and z-scores for:
+        - Static OLS (IS and OOS).
+        - Kalman Filter (IS and OOS), with support for dynamic z-score thresholds.
+    7.  Backtesting the trading strategies using the generated signals. This step
+        considers initial capital, transaction costs (fixed and variable), slippage,
+        and optional stop-loss mechanisms.
+    8.  Calculating and reporting performance metrics (e.g., CAGR, Sharpe Ratio, Max Drawdown,
+        Calmar Ratio, Number of Trades). A summary table compares the OOS performance
+        of the Kalman Filter strategy against benchmarks (Static OLS, Buy & Hold individual legs,
+        and a market benchmark if specified).
+    9.  Generating and saving various plots to visualize:
+        - In-sample Kalman Filter results (prices, spread, z-score, signals, equity curve).
+        - Out-of-sample Kalman Filter results (similar to IS, plus benchmark comparison).
+        - Cumulative returns for IS and OOS periods for all strategies and benchmarks.
+    10. Optionally, performing a sensitivity analysis on key OOS strategy parameters
+        (e.g., entry/exit z-score thresholds, Kalman Filter delta, z-score window size,
+        dynamic threshold usage) to assess robustness. Results are printed and plots saved.
+
+    The execution flow is sequential, with early exits and informative messages
+    if critical steps (like data fetching, pair selection, or Kalman Filter
+    initialization) fail or result in insufficient data. All configurations are
+    drawn from the `config` module. Output, including logs and plots, is directed
+    accordingly.
+    """
     # --- Global Settings & Configuration ---
     warnings.filterwarnings('ignore', category=RuntimeWarning)
     warnings.filterwarnings('ignore', category=FutureWarning)

@@ -4,7 +4,28 @@ import statsmodels.api as sm
 from pykalman import KalmanFilter
 
 def calculate_static_ols(y_in_sample, x_in_sample):
-    """ Calculates static OLS regression coefficients (beta, alpha) on in-sample data. """
+    """
+    Calculates static Ordinary Least Squares (OLS) regression coefficients (beta and alpha)
+    for a pair of time series using in-sample data.
+
+    The regression model is: y = alpha + beta * x + epsilon.
+
+    Parameters
+    ----------
+    y_in_sample : pd.Series
+        The dependent variable time series (e.g., prices of asset Y) for the in-sample period.
+    x_in_sample : pd.Series
+        The independent variable time series (e.g., prices of asset X) for the in-sample period.
+
+    Returns
+    -------
+    static_beta : float
+        The estimated slope coefficient (beta) from the OLS regression. Returns `np.nan` on failure.
+    static_alpha : float
+        The estimated intercept coefficient (alpha) from the OLS regression. Returns `np.nan` on failure.
+    ols_residuals : pd.Series or None
+        The residuals (y_observed - y_predicted) from the OLS regression. Returns None on failure.
+    """
     print("Calculating Static OLS parameters (In-Sample)...")
     if y_in_sample.empty or x_in_sample.empty:
         print("Error: Empty data provided to calculate_static_ols.")
@@ -31,7 +52,44 @@ def calculate_static_ols(y_in_sample, x_in_sample):
 
 
 def initialize_kalman_filter(y_in_sample, x_in_sample, kf_delta):
-    """ Initializes or trains Kalman Filter parameters using the EM algorithm on in-sample data. """
+    """
+    Initializes and "trains" a Kalman Filter for estimating dynamic hedge ratios (beta)
+    and intercepts (alpha) for a pairs trading strategy.
+
+    The state vector is [beta, alpha]. The observation equation is y_t = beta_t * x_t + alpha_t + v_t,
+    where v_t is observation noise. The state transition is assumed to be a random walk.
+
+    The function sets up the initial structure of the Kalman Filter (transition matrices,
+    initial state guesses, covariances) and then uses the Expectation-Maximization (EM)
+    algorithm on the in-sample data (y_in_sample, x_in_sample) to refine the
+    observation covariance (R), transition covariance (Q), and initial state mean/covariance.
+
+    Parameters
+    ----------
+    y_in_sample : pd.Series
+        The dependent variable time series (asset Y prices) for the in-sample period.
+    x_in_sample : pd.Series
+        The independent variable time series (asset X prices) for the in-sample period.
+    kf_delta : float
+        A parameter used to set the initial state transition covariance matrix Q.
+        Specifically, Q is initialized as `(kf_delta / (1 - kf_delta)) * np.eye(2)`.
+        A smaller delta implies more confidence in the previous state (slower adaptation).
+
+    Returns
+    -------
+    pykalman.KalmanFilter or None
+        A `KalmanFilter` object from the `pykalman` library, with parameters
+        (observation_covariance, transition_covariance, initial_state_mean,
+        initial_state_covariance) estimated by the EM algorithm.
+        Returns the initially structured (but un-trained) KF object if EM fails,
+        or None if critical errors occur during setup (e.g., empty data).
+
+    Notes
+    -----
+    - The observation matrix H_t for the EM algorithm is constructed as `[x_t, 1]`.
+    - The state transition matrix F is assumed to be the identity matrix (random walk for states).
+    - The EM algorithm iterates up to 10 times to estimate parameters.
+    """
     print("Initializing Kalman Filter parameters (In-Sample)...")
     if y_in_sample.empty or x_in_sample.empty:
         print("Error: Empty data provided to initialize_kalman_filter."); return None
@@ -77,7 +135,42 @@ def initialize_kalman_filter(y_in_sample, x_in_sample, kf_delta):
 
 
 def run_kalman_filter(kf_object, y_data, x_data):
-    """ Runs the Kalman Filter *filtering* step on provided data. """
+    """
+    Runs the Kalman Filter *filtering* step on new data (in-sample or out-of-sample)
+    using a pre-initialized/trained Kalman Filter object.
+
+    This function takes an existing `KalmanFilter` object (presumably initialized
+    by `initialize_kalman_filter`) and applies it to the provided `y_data` and
+    `x_data` to obtain filtered estimates of the state vector [beta, alpha]
+    at each time step.
+
+    Parameters
+    ----------
+    kf_object : pykalman.KalmanFilter
+        The initialized/trained Kalman Filter object. Its internal parameters
+        (like Q, R, initial state for the *start* of this data segment) are used.
+    y_data : pd.Series
+        The dependent variable time series (observations) for the period to be filtered.
+    x_data : pd.Series
+        The independent variable time series, used to construct the time-varying
+        observation matrix H_t = `[x_data_t, 1]`.
+
+    Returns
+    -------
+    beta_filtered : pd.Series
+        A time series of the filtered estimates for the hedge ratio (beta).
+        Indexed same as `y_data`. Returns an empty Series on failure.
+    alpha_filtered : pd.Series
+        A time series of the filtered estimates for the intercept (alpha).
+        Indexed same as `y_data`. Returns an empty Series on failure.
+
+    Notes
+    -----
+    - The `kf_object.observation_matrices` attribute is dynamically updated within
+      this function based on `x_data` before running the `filter` method.
+    - The function uses `kf_object.filter()`, which performs the forward pass
+      of the Kalman Filter equations.
+    """
     print(f"Running KF filtering: {y_data.index.min().date()} to {y_data.index.max().date()}...")
     if y_data.empty or x_data.empty or kf_object is None:
         print("Error: Invalid input to run_kalman_filter."); return pd.Series(dtype=float), pd.Series(dtype=float)
